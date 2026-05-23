@@ -1,6 +1,6 @@
 # Dynamic Fields Pro — Complete Developer Documentation
 
-Version: 1.0.0 | Requires: WordPress 5.8+, PHP 7.4+
+Version: 1.0.3 | Requires: WordPress 5.8+, PHP 7.4+
 
 ---
 
@@ -21,6 +21,9 @@ Version: 1.0.0 | Requires: WordPress 5.8+, PHP 7.4+
 13. [Registering Custom Field Types](#13-registering-custom-field-types)
 14. [Hooks & Filters Reference](#14-hooks--filters-reference)
 15. [Common Patterns & Recipes](#15-common-patterns--recipes)
+16. [WooCommerce — WC Product Field](#16-woocommerce--wc-product-field)
+17. [WooCommerce — WC Category Field](#17-woocommerce--wc-category-field)
+18. [WooCommerce — Product Showcase Field](#18-woocommerce--product-showcase-field)
 
 ---
 
@@ -80,6 +83,9 @@ The fields will now appear as a meta box on the edit screen of the assigned post
 | File | `array` | Any file upload |
 | WYSIWYG | `string` | Rich text / HTML |
 | Repeater | `array[]` | Repeating row sets |
+| **WC Product** | `WC_Product[]` or `int[]` | Select WooCommerce products |
+| **WC Category** | `WP_Term[]` or `int[]` | Select product categories |
+| **Product Showcase** | `array[]` | Category tabs with curated products |
 
 ---
 
@@ -975,6 +981,527 @@ All global template functions (`get_field`, `have_rows`, etc.) are wrapped in `f
 
 ---
 
+
+## 16. WooCommerce — WC Product Field
+
+Lets a content editor pick one or more WooCommerce products from a dual-pane UI (available left, selected right). Works even if WooCommerce is not installed — falls back to standard `WP_Post` objects.
+
+### Field Settings
+
+| Setting | Options | Default |
+|---------|---------|---------|
+| Multiple | On / Off | On |
+| Return Format | Product Object / Product ID | Product Object |
+| Product Status | Published / Any / Draft | Published |
+
+### Admin UI
+
+The field shows:
+- **Left pane** — all products (thumbnail + title + price), with live search filter
+- **Right pane** — selected products with a remove button
+- Click a product on the left to move it to the right; click × on the right to deselect
+
+### Template Usage
+
+**Return format: Object (default)**
+
+```php
+<?php
+$products = get_field( 'featured_products' ); // array of WC_Product objects
+
+if ( $products ) : ?>
+<div class="product-list">
+    <?php foreach ( $products as $product ) : ?>
+    <div class="product-card">
+        <?php echo get_the_post_thumbnail( $product->get_id(), 'medium' ); ?>
+        <h3><?php echo esc_html( $product->get_name() ); ?></h3>
+        <p class="price"><?php echo wp_kses_post( $product->get_price_html() ); ?></p>
+        <a href="<?php echo esc_url( get_permalink( $product->get_id() ) ); ?>"
+           class="btn">View Details</a>
+        <a href="<?php echo esc_url( $product->add_to_cart_url() ); ?>"
+           class="btn btn-primary">Buy Now</a>
+    </div>
+    <?php endforeach; ?>
+</div>
+<?php endif; ?>
+```
+
+**Return format: ID**
+
+```php
+$product_ids = get_field( 'featured_products' ); // array of int
+
+foreach ( $product_ids as $id ) {
+    $product = wc_get_product( $id );
+    echo esc_html( $product->get_name() );
+}
+```
+
+---
+
+## 17. WooCommerce — WC Category Field
+
+Displays all product categories (`product_cat` taxonomy) as a hierarchical checkbox list. Supports live filtering and single/multiple selection.
+
+### Field Settings
+
+| Setting | Options | Default |
+|---------|---------|---------|
+| Multiple | On / Off | On |
+| Return Format | Term Object / Term ID / Term Slug | Term Object |
+
+### Admin UI
+
+- Scrollable checklist with hierarchical indentation (child categories indented under parents)
+- Live search filter at the top
+- Product count shown next to each category name
+
+### Template Usage
+
+**Return format: Object (default)**
+
+```php
+<?php
+$categories = get_field( 'product_categories' ); // array of WP_Term
+
+if ( $categories ) : ?>
+<ul class="category-list">
+    <?php foreach ( $categories as $cat ) : ?>
+    <li>
+        <a href="<?php echo esc_url( get_term_link( $cat ) ); ?>">
+            <?php echo esc_html( $cat->name ); ?>
+            <span class="count">(<?php echo absint( $cat->count ); ?>)</span>
+        </a>
+    </li>
+    <?php endforeach; ?>
+</ul>
+<?php endif; ?>
+```
+
+**Return format: Slug**
+
+```php
+$slugs = get_field( 'product_categories' ); // ['mobile-computers', 'scanners']
+
+foreach ( $slugs as $slug ) {
+    $term = get_term_by( 'slug', $slug, 'product_cat' );
+    if ( $term ) {
+        echo esc_html( $term->name );
+    }
+}
+```
+
+**Query products by selected categories:**
+
+```php
+$categories = get_field( 'product_categories' ); // WP_Term objects
+$cat_ids    = wp_list_pluck( $categories, 'term_id' );
+
+$query = new WP_Query( [
+    'post_type'  => 'product',
+    'tax_query'  => [ [
+        'taxonomy' => 'product_cat',
+        'field'    => 'term_id',
+        'terms'    => $cat_ids,
+    ] ],
+] );
+```
+
+---
+
+## 18. WooCommerce — Product Showcase Field
+
+The **Product Showcase** field lets a content editor build an interactive tabbed product display — like the one on WooCommerce store landing pages. Each tab is a product category with a curated list of products underneath.
+
+**What it looks like on the frontend:**
+
+```
+[ Mobile Computers ]  [ Barcode Scanners ]  [ RFID Solutions ]  [ Printers ]
+─────────────────────────────────────────────────────────────
+ ┌────────────┐  ┌────────────┐  ┌────────────┐  ┌────────────┐
+ │  [thumb]   │  │  [thumb]   │  │  [thumb]   │  │  [thumb]   │
+ │ Product A  │  │ Product B  │  │ Product C  │  │ Product D  │
+ │ $2,499 AUD │  │ $1,899 AUD │  │  $329 AUD  │  │ $1,999 AUD │
+ │[View][Buy] │  │[View][Buy] │  │[View][Buy] │  │[View][Buy] │
+ └────────────┘  └────────────┘  └────────────┘  └────────────┘
+```
+
+### Step 1 — Create the Field Group
+
+1. Go to **Dynamic Fields → Add New**
+2. Set title: `Product Showcase`
+3. Click **+ Add Field**
+4. Set **Label** = `Product Showcase`, **Name** = `product_showcase`, **Type** = `Product Showcase`
+5. Set **Location** to: Post Type == page (or whichever post type your landing page is)
+6. **Save Field Group**
+
+### Step 2 — Edit the Page
+
+Open any page that matches the location rule. You will see a **Product Showcase** meta box with:
+
+- **+ Add Category Tab** — adds a new tab row
+- Each tab row:
+  - **Category dropdown** — pick a WooCommerce product category
+  - Products for that category load as clickable cards automatically
+  - Click a product card to select it (blue border + checkmark); click again to deselect
+  - Drag the tab handle (≡) to reorder tabs
+  - Click the trash icon to remove a tab
+- **Save** the page when done
+
+### Step 3 — Return Value Structure
+
+`get_field('product_showcase')` returns an array of tabs. Each tab is:
+
+```php
+[
+    'category' => WP_Term,      // the product category term object
+    'products' => WC_Product[], // array of WC_Product objects
+]
+```
+
+With **Return Format = ID**:
+```php
+[
+    'cat_id'   => 5,            // term ID
+    'products' => [101, 102],   // product IDs
+]
+```
+
+### Step 4 — Complete Template Implementation
+
+Create `templates/landing-page.php` (or add to your existing template):
+
+```php
+<?php
+/**
+ * Template Name: Landing Page
+ */
+get_header();
+
+$showcase = get_field( 'product_showcase' );
+?>
+
+<?php if ( $showcase ) : ?>
+
+<!-- ══════════════════════════════════════════════════════════
+     PRODUCT SHOWCASE — Category Tabs + Product Grid
+     ══════════════════════════════════════════════════════════ -->
+<section class="product-showcase">
+    <div class="container">
+
+        <!-- Tab navigation -->
+        <div class="showcase-tabs" role="tablist">
+            <?php foreach ( $showcase as $index => $tab ) :
+                $cat = $tab['category']; // WP_Term
+            ?>
+            <button
+                class="showcase-tab<?php echo $index === 0 ? ' active' : ''; ?>"
+                role="tab"
+                aria-selected="<?php echo $index === 0 ? 'true' : 'false'; ?>"
+                data-tab="<?php echo absint( $cat->term_id ); ?>"
+            >
+                <?php echo esc_html( $cat->name ); ?>
+            </button>
+            <?php endforeach; ?>
+        </div>
+
+        <!-- Tab panels -->
+        <?php foreach ( $showcase as $index => $tab ) :
+            $cat      = $tab['category'];   // WP_Term
+            $products = $tab['products'];   // WC_Product[]
+        ?>
+        <div
+            class="showcase-panel<?php echo $index === 0 ? ' active' : ''; ?>"
+            role="tabpanel"
+            data-panel="<?php echo absint( $cat->term_id ); ?>"
+        >
+            <?php if ( $products ) : ?>
+
+            <!-- Product slider / grid -->
+            <div class="showcase-product-grid">
+                <?php foreach ( $products as $product ) : ?>
+                <div class="showcase-product-card">
+
+                    <!-- Thumbnail -->
+                    <a href="<?php echo esc_url( get_permalink( $product->get_id() ) ); ?>"
+                       class="card-thumb">
+                        <?php echo get_the_post_thumbnail(
+                            $product->get_id(),
+                            'woocommerce_thumbnail',
+                            [ 'alt' => esc_attr( $product->get_name() ) ]
+                        ); ?>
+                    </a>
+
+                    <!-- Info -->
+                    <div class="card-body">
+                        <h3 class="card-title">
+                            <a href="<?php echo esc_url( get_permalink( $product->get_id() ) ); ?>">
+                                <?php echo esc_html( $product->get_name() ); ?>
+                            </a>
+                        </h3>
+
+                        <?php if ( $product->get_short_description() ) : ?>
+                        <p class="card-desc">
+                            <?php echo wp_kses_post( $product->get_short_description() ); ?>
+                        </p>
+                        <?php endif; ?>
+
+                        <div class="card-price">
+                            <?php echo wp_kses_post( $product->get_price_html() ); ?>
+                        </div>
+                    </div>
+
+                    <!-- Actions -->
+                    <div class="card-actions">
+                        <a href="<?php echo esc_url( get_permalink( $product->get_id() ) ); ?>"
+                           class="btn btn-outline">View Details</a>
+                        <a href="<?php echo esc_url( $product->add_to_cart_url() ); ?>"
+                           class="btn btn-primary"
+                           <?php echo $product->supports( 'ajax_add_to_cart' ) ? 'data-quantity="1" data-product_id="' . absint( $product->get_id() ) . '" class="btn btn-primary add_to_cart_button ajax_add_to_cart"' : ''; ?>>
+                            Buy Now
+                        </a>
+                    </div>
+
+                </div>
+                <?php endforeach; ?>
+            </div>
+
+            <!-- View all link -->
+            <div class="showcase-view-all">
+                <a href="<?php echo esc_url( get_term_link( $cat ) ); ?>" class="link-arrow">
+                    View All <?php echo esc_html( $cat->name ); ?> &rarr;
+                </a>
+            </div>
+
+            <?php else : ?>
+            <p class="no-products">No products found in this category.</p>
+            <?php endif; ?>
+        </div>
+        <?php endforeach; ?>
+
+    </div>
+</section>
+
+<?php endif; ?>
+
+<?php get_footer(); ?>
+```
+
+### Step 5 — CSS Styling
+
+```css
+/* ── Product Showcase Section ── */
+.product-showcase {
+    padding: 60px 0;
+    background: #f8f9fa;
+}
+
+/* Tab navigation */
+.showcase-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-bottom: 32px;
+    border-bottom: 2px solid #e2e4e7;
+}
+
+.showcase-tab {
+    padding: 12px 24px;
+    border: none;
+    background: none;
+    font-size: 15px;
+    font-weight: 600;
+    color: #555;
+    cursor: pointer;
+    border-bottom: 3px solid transparent;
+    margin-bottom: -2px;
+    transition: color .2s, border-color .2s;
+}
+.showcase-tab:hover    { color: #0073aa; }
+.showcase-tab.active   { color: #0073aa; border-bottom-color: #0073aa; }
+
+/* Tab panels */
+.showcase-panel        { display: none; }
+.showcase-panel.active { display: block; }
+
+/* Product grid */
+.showcase-product-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 24px;
+    margin-bottom: 24px;
+}
+
+/* Product card */
+.showcase-product-card {
+    background: #fff;
+    border: 1px solid #e2e4e7;
+    border-radius: 8px;
+    overflow: hidden;
+    transition: box-shadow .2s, transform .2s;
+    display: flex;
+    flex-direction: column;
+}
+.showcase-product-card:hover {
+    box-shadow: 0 8px 24px rgba(0,0,0,.10);
+    transform: translateY(-2px);
+}
+
+.card-thumb img {
+    width: 100%;
+    height: 200px;
+    object-fit: contain;
+    padding: 16px;
+    display: block;
+}
+
+.card-body {
+    padding: 16px;
+    flex: 1;
+}
+.card-title { font-size: 15px; font-weight: 700; margin: 0 0 8px; }
+.card-title a { color: #1a2332; text-decoration: none; }
+.card-title a:hover { color: #0073aa; }
+.card-desc { font-size: 13px; color: #666; margin: 0 0 12px; line-height: 1.5; }
+.card-price { font-size: 18px; font-weight: 700; color: #0073aa; }
+
+.card-actions {
+    padding: 16px;
+    display: flex;
+    gap: 8px;
+    border-top: 1px solid #f0f0f0;
+}
+
+/* Buttons */
+.btn {
+    display: inline-block;
+    padding: 8px 16px;
+    border-radius: 4px;
+    font-size: 13px;
+    font-weight: 600;
+    text-align: center;
+    text-decoration: none;
+    cursor: pointer;
+    flex: 1;
+    border: 2px solid transparent;
+    transition: background .15s, color .15s;
+}
+.btn-outline {
+    border-color: #0073aa;
+    color: #0073aa;
+    background: transparent;
+}
+.btn-outline:hover { background: #0073aa; color: #fff; }
+.btn-primary { background: #e74c3c; color: #fff; border-color: #e74c3c; }
+.btn-primary:hover { background: #c0392b; border-color: #c0392b; }
+
+/* View all link */
+.showcase-view-all { text-align: center; margin-top: 8px; }
+.link-arrow {
+    font-size: 14px;
+    font-weight: 600;
+    color: #0073aa;
+    text-decoration: none;
+}
+.link-arrow:hover { text-decoration: underline; }
+
+/* Responsive */
+@media (max-width: 768px) {
+    .showcase-product-grid { grid-template-columns: repeat(2, 1fr); }
+    .showcase-tab          { padding: 10px 14px; font-size: 13px; }
+}
+@media (max-width: 480px) {
+    .showcase-product-grid { grid-template-columns: 1fr; }
+}
+```
+
+### Step 6 — JavaScript Tab Switching
+
+```js
+// Plain JS — no jQuery required
+document.addEventListener( 'DOMContentLoaded', function () {
+
+    var tabs   = document.querySelectorAll( '.showcase-tab' );
+    var panels = document.querySelectorAll( '.showcase-panel' );
+
+    tabs.forEach( function ( tab ) {
+        tab.addEventListener( 'click', function () {
+            var targetId = this.dataset.tab;
+
+            // Update tabs
+            tabs.forEach( function ( t ) {
+                t.classList.remove( 'active' );
+                t.setAttribute( 'aria-selected', 'false' );
+            } );
+            this.classList.add( 'active' );
+            this.setAttribute( 'aria-selected', 'true' );
+
+            // Update panels
+            panels.forEach( function ( p ) { p.classList.remove( 'active' ); } );
+            var panel = document.querySelector( '.showcase-panel[data-panel="' + targetId + '"]' );
+            if ( panel ) { panel.classList.add( 'active' ); }
+        } );
+    } );
+} );
+```
+
+### Return Format Reference
+
+```php
+// Default: objects
+$showcase = get_field( 'product_showcase' );
+
+foreach ( $showcase as $tab ) {
+    $tab['category']  // WP_Term — $cat->term_id, $cat->name, $cat->slug, $cat->description
+    $tab['products']  // WC_Product[] — see WooCommerce API for all methods
+}
+
+// WC_Product methods
+$product->get_id()
+$product->get_name()
+$product->get_price()
+$product->get_price_html()       // formatted price with currency
+$product->get_short_description()
+$product->get_regular_price()
+$product->get_sale_price()
+$product->is_on_sale()
+$product->is_in_stock()
+$product->get_stock_quantity()
+$product->add_to_cart_url()
+$product->get_sku()
+
+// Return format: IDs only (faster, no object instantiation)
+// Set "Return Format" = "IDs only" in field settings
+$showcase = get_field( 'product_showcase' );
+foreach ( $showcase as $tab ) {
+    $tab['cat_id']    // int — term ID
+    $tab['products']  // int[] — product post IDs
+}
+```
+
+### Full Landing Page Field Group Setup
+
+For a complete landing page with a product showcase, recommended field group:
+
+| Field Label | Field Name | Type |
+|-------------|-----------|------|
+| Hero Title | `hero_title` | Text |
+| Hero Subtitle | `hero_subtitle` | Textarea |
+| Hero Background | `hero_bg_image` | Image |
+| Hero Button Text | `hero_btn_text` | Text |
+| Hero Button URL | `hero_btn_url` | URL |
+| **Product Showcase** | **`product_showcase`** | **Product Showcase** |
+| Show CTA | `show_cta` | True / False |
+| CTA Heading | `cta_heading` | Text |
+| CTA Button | `cta_btn_text` | Text |
+| CTA URL | `cta_btn_url` | URL |
+
+**Location Rule:** Post Type == page AND Page Template == your landing page template
+
+This gives you full control over the landing page content — hero, product tabs, and call-to-action — all editable from the WordPress admin without touching code.
+
+---
+
 ## Quick Reference Card
 
 ```
@@ -992,10 +1519,15 @@ get_row()                           → full row array
 get_row_index()                     → 0-based index
 reset_rows( 'repeater_name' )       → reset pointer
 
+WooCommerce fields:
+get_field( 'wc_product_field' )     → WC_Product[] or int[]
+get_field( 'wc_category_field' )    → WP_Term[] or int[] or string[]
+get_field( 'product_showcase' )     → [ { category, products[] }, … ]
+
 REST GET  /wp-json/dfp/v1/fields/{post_id}
 REST POST /wp-json/dfp/v1/fields/{post_id}
 ```
 
 ---
 
-*Dynamic Fields Pro v1.0.0 — Built as a complete ACF alternative for WordPress.*
+*Dynamic Fields Pro v1.0.3 — Built as a complete ACF alternative for WordPress.*

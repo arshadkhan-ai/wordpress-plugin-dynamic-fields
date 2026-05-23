@@ -25,6 +25,9 @@
 			this.initDatePickers();
 			this.initTrueFalseToggle();
 			this.initRelationshipFields();
+			this.initWCProductFields();
+			this.initWCCategoryFields();
+			this.initProductShowcaseFields();
 			this.initImportPanel();
 			this.initToggleAllCheckbox();
 		},
@@ -968,6 +971,452 @@
 				$wrap.find( '.dfp-file-info' ).hide();
 				$( this ).hide();
 				$wrap.find( '.dfp-file-select' ).text( 'Select File' );
+			} );
+		},
+
+		// ── Product Showcase field (redesigned) ────────────────────────────
+
+		initProductShowcaseFields: function ( $ctx ) {
+			$ctx = $ctx || $( document );
+			var self = this;
+			$ctx.find( '.dfp-ps-wrap' ).each( function () {
+				self.bindProductShowcase( $( this ) );
+			} );
+		},
+
+		bindProductShowcase: function ( $wrap ) {
+			var self    = this;
+			var nonce   = $wrap.data( 'nonce' );
+			var ajaxUrl = $wrap.data( 'ajax-url' );
+			var $valInp = $wrap.find( '.dfp-showcase-value' );
+
+			var allCats = [];
+			try { allCats = JSON.parse( $wrap.find( '.dfp-showcase-categories' ).text() ); } catch(e) {}
+
+			var data = { section_title: '', section_subtitle: '', layout_style: 'tabs', tab_style: 'horizontal', products_per_page: 4, categories: [] };
+			try {
+				var parsed = JSON.parse( $valInp.val() );
+				if ( parsed && typeof parsed === 'object' ) { $.extend( data, parsed ); }
+			} catch(e) {}
+
+			// ── Serialise all state → hidden input ──
+			function serialize() {
+				var cats = [];
+				$wrap.find( '.dfp-ps-acc-panel' ).each( function () {
+					var catId    = parseInt( $( this ).data( 'cat-id' ), 10 );
+					var products = [];
+					$( this ).find( '.dfp-ps-prod-row' ).each( function () {
+						var pid   = parseInt( $( this ).data( 'prod-id' ), 10 );
+						var price = $( this ).find( '.dfp-ps-prod-price' ).val() || '';
+						if ( pid ) { products.push( { id: pid, price: price } ); }
+					} );
+					if ( catId ) { cats.push( { cat_id: catId, products: products } ); }
+				} );
+				data.categories = cats;
+				$valInp.val( JSON.stringify( data ) );
+			}
+
+			function getCatName( catId ) {
+				var name = '';
+				$.each( allCats, function ( i, cat ) {
+					if ( parseInt( cat.id, 10 ) === parseInt( catId, 10 ) ) { name = cat.name; return false; }
+				} );
+				return name;
+			}
+
+			// ── Build a product row (<tr>) ──
+			function buildProductRow( prodId, priceOverride, title ) {
+				var $row = $( '<tr class="dfp-ps-prod-row">' ).data( 'prod-id', prodId );
+				var nameHtml = title
+					? $( '<span>' ).text( title ).html()
+					: '<span class="dfp-ps-loading-title">Loading&hellip;</span>';
+				$row.append( '<td class="dfp-ps-prod-handle"><span class="dashicons dashicons-menu-alt2"></span></td>' );
+				$row.append( '<td class="dfp-ps-prod-name">' + nameHtml + ' <small class="dfp-ps-prod-id">#' + prodId + '</small></td>' );
+				$row.append( '<td class="dfp-ps-prod-price-cell"><input type="text" class="dfp-ps-prod-price small-text" value="' + $( '<span>' ).text( priceOverride ).html() + '" placeholder="e.g. 29.99"></td>' );
+				$row.append( '<td><button type="button" class="dfp-ps-prod-remove button-link" title="Remove"><span class="dashicons dashicons-trash"></span></button></td>' );
+				return $row;
+			}
+
+			// ── Async-load titles for rows in a panel ──
+			function loadPanelTitles( $panel, catId ) {
+				$.get( ajaxUrl, { action: 'dfp_wc_products_by_category', nonce: nonce, cat_id: catId }, function ( res ) {
+					if ( res && res.success && res.data ) {
+						var map = {};
+						$.each( res.data, function ( i, p ) { map[ p.id ] = p; } );
+						$panel.data( 'cat-products', res.data );
+						$panel.find( '.dfp-ps-prod-row' ).each( function () {
+							var pid = $( this ).data( 'prod-id' );
+							if ( map[ pid ] ) {
+								$( this ).find( '.dfp-ps-prod-name' ).html(
+									$( '<span>' ).text( map[ pid ].title ).html() +
+									' <small class="dfp-ps-prod-id">#' + pid + '</small>'
+								);
+							}
+						} );
+					}
+				} );
+			}
+
+			function updatePanelCount( $panel ) {
+				var n = $panel.find( '.dfp-ps-prod-row' ).length;
+				$panel.find( '.dfp-ps-acc-count' ).text( n + ' product' + ( n !== 1 ? 's' : '' ) );
+			}
+
+			// ── Build an accordion panel for a category ──
+			function buildAccordionPanel( catId, products ) {
+				var catName = getCatName( catId ) || ( 'Category #' + catId );
+				var $panel  = $( '<div class="dfp-ps-acc-panel dfp-ps-acc-expanded">' ).data( 'cat-id', catId );
+
+				var $hdr = $( '<div class="dfp-ps-acc-hdr">' );
+				$hdr.append( '<button type="button" class="dfp-ps-acc-toggle button-link"><span class="dashicons dashicons-arrow-down-alt2"></span></button>' );
+				$hdr.append( '<strong class="dfp-ps-acc-title">' + $( '<span>' ).text( catName ).html() + '</strong>' );
+				$hdr.append( '<span class="dfp-ps-acc-count">' + ( products ? products.length : 0 ) + ' product' + ( products && products.length !== 1 ? 's' : '' ) + '</span>' );
+				$hdr.append( '<button type="button" class="dfp-ps-acc-add-prod button button-small">+ Add Product</button>' );
+				$hdr.append( '<button type="button" class="dfp-ps-acc-remove button-link" title="Remove category"><span class="dashicons dashicons-trash"></span></button>' );
+				$panel.append( $hdr );
+
+				var $body = $( '<div class="dfp-ps-acc-body">' );
+				if ( products && products.length ) {
+					var $tbl   = $( '<table class="dfp-ps-prod-table widefat"><thead><tr><th></th><th>Product</th><th>Price Override</th><th></th></tr></thead></table>' );
+					var $tbody = $( '<tbody class="dfp-ps-prod-list">' );
+					$.each( products, function ( i, p ) {
+						$tbody.append( buildProductRow( p.id, p.price || '', '' ) );
+					} );
+					$tbl.append( $tbody );
+					$body.append( $tbl );
+					loadPanelTitles( $panel, catId );
+				} else {
+					$body.append( '<p class="dfp-ps-hint">No products added yet. Click "+ Add Product" to begin.</p>' );
+				}
+				$panel.append( $body );
+
+				return $panel;
+			}
+
+			// ── Build accordion from data.categories ──
+			function buildAccordionFromData() {
+				var $acc = $wrap.find( '.dfp-ps-accordion' );
+				$acc.empty();
+				$.each( data.categories, function ( i, cat ) {
+					$acc.append( buildAccordionPanel( cat.cat_id, cat.products || [] ) );
+				} );
+			}
+
+			// ── Product picker overlay ──
+			function showProductPicker( $panel ) {
+				var catId      = parseInt( $panel.data( 'cat-id' ), 10 );
+				var $overlay   = $( '<div class="dfp-ps-prod-picker-overlay">' );
+				var $box       = $( '<div class="dfp-ps-prod-picker-box">' );
+				$box.append(
+					'<div class="dfp-ps-prod-picker-hdr">' +
+					'<strong>Add Product</strong>' +
+					'<button type="button" class="dfp-ps-prod-picker-close button-link">&times;</button>' +
+					'</div>'
+				);
+				$box.append( '<input type="text" class="dfp-ps-prod-picker-search widefat" placeholder="Search products&hellip;">' );
+				$box.append( '<ul class="dfp-ps-prod-picker-list"><li class="dfp-ps-ppi-loading">Loading&hellip;</li></ul>' );
+				$overlay.append( $box );
+				$( 'body' ).append( $overlay );
+
+				function renderPicker( products ) {
+					var existingIds = [];
+					$panel.find( '.dfp-ps-prod-row' ).each( function () {
+						existingIds.push( parseInt( $( this ).data( 'prod-id' ), 10 ) );
+					} );
+					var $list = $overlay.find( '.dfp-ps-prod-picker-list' );
+					if ( ! products || ! products.length ) {
+						$list.html( '<li class="dfp-ps-ppi-loading">No products found in this category.</li>' );
+						return;
+					}
+					var html = '';
+					$.each( products, function ( i, p ) {
+						var added     = existingIds.indexOf( parseInt( p.id, 10 ) ) !== -1;
+						var addedCls  = added ? ' dfp-ps-prod-already' : '';
+						var thumbHtml = p.thumb
+							? '<img src="' + p.thumb + '" width="32" height="32" alt="">'
+							: '<span class="dfp-ps-ppi-no-thumb"></span>';
+						html += '<li class="dfp-ps-prod-picker-item' + addedCls + '" data-id="' + p.id + '" data-title="' + $( '<span>' ).text( p.title ).html() + '">';
+						html += '<span class="dfp-ps-ppi-thumb">' + thumbHtml + '</span>';
+						html += '<span class="dfp-ps-ppi-info"><strong>' + $( '<span>' ).text( p.title ).html() + '</strong>' + ( p.price ? '<span class="dfp-ps-ppi-price">' + p.price + '</span>' : '' ) + '</span>';
+						html += added ? '<span class="dfp-ps-ppi-added">Added</span>' : '<span class="dfp-ps-ppi-add">+ Add</span>';
+						html += '</li>';
+					} );
+					$list.html( html );
+				}
+
+				var cached = $panel.data( 'cat-products' );
+				if ( cached ) {
+					renderPicker( cached );
+				} else {
+					$.get( ajaxUrl, { action: 'dfp_wc_products_by_category', nonce: nonce, cat_id: catId }, function ( res ) {
+						if ( res && res.success ) {
+							$panel.data( 'cat-products', res.data || [] );
+							renderPicker( res.data || [] );
+						} else {
+							renderPicker( [] );
+						}
+					} );
+				}
+
+				$overlay.on( 'input', '.dfp-ps-prod-picker-search', function () {
+					var q = $( this ).val().toLowerCase();
+					$overlay.find( '.dfp-ps-prod-picker-item' ).each( function () {
+						$( this ).toggle( String( $( this ).data( 'title' ) || '' ).toLowerCase().indexOf( q ) !== -1 );
+					} );
+				} );
+
+				$overlay.on( 'click', '.dfp-ps-prod-picker-close', function () { $overlay.remove(); } );
+				$overlay.on( 'click', function ( e ) {
+					if ( $( e.target ).is( '.dfp-ps-prod-picker-overlay' ) ) { $overlay.remove(); }
+				} );
+
+				$overlay.on( 'click', '.dfp-ps-prod-picker-item:not(.dfp-ps-prod-already)', function () {
+					var pid   = parseInt( $( this ).data( 'id' ), 10 );
+					var title = String( $( this ).data( 'title' ) || '' );
+					var $tbody = $panel.find( '.dfp-ps-prod-list' );
+					if ( ! $tbody.length ) {
+						var $tbl = $( '<table class="dfp-ps-prod-table widefat"><thead><tr><th></th><th>Product</th><th>Price Override</th><th></th></tr></thead></table>' );
+						$tbody = $( '<tbody class="dfp-ps-prod-list">' );
+						$tbl.append( $tbody );
+						$panel.find( '.dfp-ps-acc-body p.dfp-ps-hint' ).replaceWith( $tbl );
+					}
+					$tbody.append( buildProductRow( pid, '', title ) );
+					updatePanelCount( $panel );
+					serialize();
+					$overlay.remove();
+				} );
+			}
+
+			// ── Init: build accordion from saved data ──
+			buildAccordionFromData();
+
+			// ── Layout picker ──
+			$wrap.on( 'click', '.dfp-ps-layout-card', function () {
+				$wrap.find( '.dfp-ps-layout-card' ).removeClass( 'dfp-ps-layout-active' );
+				$( this ).addClass( 'dfp-ps-layout-active' );
+				data.layout_style = $( this ).data( 'layout' );
+				serialize();
+			} );
+
+			// ── Tab style radios ──
+			$wrap.on( 'change', '.dfp-ps-tab-style', function () {
+				data.tab_style = $( this ).val();
+				serialize();
+			} );
+
+			// ── Text/number inputs ──
+			$wrap.on( 'input', '.dfp-ps-section-title',    function () { data.section_title    = $( this ).val(); serialize(); } );
+			$wrap.on( 'input', '.dfp-ps-section-subtitle', function () { data.section_subtitle = $( this ).val(); serialize(); } );
+			$wrap.on( 'input change', '.dfp-ps-ppp',       function () { data.products_per_page = parseInt( $( this ).val(), 10 ) || 4; serialize(); } );
+
+			// ── Collapsible row ──
+			$wrap.on( 'click', '.dfp-ps-collapsible-hdr', function () {
+				$( this ).next( '.dfp-ps-collapsible-body' ).slideToggle( 200 );
+				$( this ).find( '.dashicons' ).toggleClass( 'dashicons-arrow-down-alt2 dashicons-arrow-up-alt2' );
+			} );
+
+			// ── Category tag selector ──
+			$wrap.on( 'focus input', '.dfp-ps-cat-search', function () {
+				var q           = $( this ).val().toLowerCase();
+				var $dropdown   = $wrap.find( '.dfp-ps-cat-dropdown' );
+				var $opts       = $wrap.find( '.dfp-ps-cat-options' );
+				var existingIds = [];
+				$wrap.find( '.dfp-ps-acc-panel' ).each( function () {
+					existingIds.push( parseInt( $( this ).data( 'cat-id' ), 10 ) );
+				} );
+				var html = '';
+				$.each( allCats, function ( i, cat ) {
+					if ( existingIds.indexOf( parseInt( cat.id, 10 ) ) !== -1 ) { return; }
+					if ( q && cat.name.toLowerCase().indexOf( q ) === -1 ) { return; }
+					html += '<li class="dfp-ps-cat-opt" data-cat-id="' + cat.id + '">' + $( '<span>' ).text( cat.name ).html() + '</li>';
+				} );
+				$opts.html( html || '<li class="dfp-ps-cat-opt-empty">No categories found</li>' );
+				$dropdown.show();
+			} );
+
+			$( document ).on( 'click.dfp-ps-' + $wrap.data( 'field-key' ), function ( e ) {
+				if ( ! $( e.target ).closest( '.dfp-ps-tagbox' ).length ) {
+					$wrap.find( '.dfp-ps-cat-dropdown' ).hide();
+					$wrap.find( '.dfp-ps-cat-search' ).val( '' );
+				}
+			} );
+
+			$wrap.on( 'click', '.dfp-ps-cat-opt', function () {
+				var catId   = parseInt( $( this ).data( 'cat-id' ), 10 );
+				var catName = getCatName( catId );
+				if ( ! catId || ! catName ) { return; }
+				addCategory( catId, catName, [] );
+				$wrap.find( '.dfp-ps-cat-dropdown' ).hide();
+				$wrap.find( '.dfp-ps-cat-search' ).val( '' );
+			} );
+
+			$wrap.on( 'click', '.dfp-ps-tag-x', function () {
+				var catId = parseInt( $( this ).closest( '.dfp-ps-tag' ).data( 'cat-id' ), 10 );
+				$( this ).closest( '.dfp-ps-tag' ).remove();
+				$wrap.find( '.dfp-ps-acc-panel[data-cat-id="' + catId + '"]' ).remove();
+				serialize();
+			} );
+
+			function addCategory( catId, catName, products ) {
+				if ( $wrap.find( '.dfp-ps-acc-panel[data-cat-id="' + catId + '"]' ).length ) { return; }
+				$wrap.find( '.dfp-ps-tags-list' ).append(
+					'<span class="dfp-ps-tag" data-cat-id="' + catId + '">' +
+					$( '<span>' ).text( catName ).html() +
+					'<button type="button" class="dfp-ps-tag-x" title="Remove">&times;</button></span>'
+				);
+				$wrap.find( '.dfp-ps-accordion' ).append( buildAccordionPanel( catId, products ) );
+				serialize();
+			}
+
+			// ── + Add Category button → focus tag search ──
+			$wrap.on( 'click', '.dfp-ps-add-cat-btn', function () {
+				var $search = $wrap.find( '.dfp-ps-cat-search' );
+				$search.focus().trigger( 'focus' );
+				$( 'html, body' ).animate( { scrollTop: $wrap.find( '.dfp-ps-tagbox' ).offset().top - 80 }, 200 );
+			} );
+
+			// ── Expand / Collapse All ──
+			$wrap.on( 'click', '.dfp-ps-expand-all', function () {
+				var $panels      = $wrap.find( '.dfp-ps-acc-panel' );
+				var allExpanded  = $panels.length && $panels.filter( '.dfp-ps-acc-expanded' ).length === $panels.length;
+				$panels.toggleClass( 'dfp-ps-acc-expanded', ! allExpanded );
+				$( this ).text( allExpanded ? 'Expand All' : 'Collapse All' );
+			} );
+
+			// ── Accordion panel toggle ──
+			$wrap.on( 'click', '.dfp-ps-acc-toggle', function () {
+				$( this ).closest( '.dfp-ps-acc-panel' ).toggleClass( 'dfp-ps-acc-expanded' );
+			} );
+
+			// ── Remove accordion panel ──
+			$wrap.on( 'click', '.dfp-ps-acc-remove', function () {
+				var catId = parseInt( $( this ).closest( '.dfp-ps-acc-panel' ).data( 'cat-id' ), 10 );
+				$( this ).closest( '.dfp-ps-acc-panel' ).remove();
+				$wrap.find( '.dfp-ps-tag[data-cat-id="' + catId + '"]' ).remove();
+				serialize();
+			} );
+
+			// ── Add product to panel ──
+			$wrap.on( 'click', '.dfp-ps-acc-add-prod', function () {
+				showProductPicker( $( this ).closest( '.dfp-ps-acc-panel' ) );
+			} );
+
+			// ── Remove single product row ──
+			$wrap.on( 'click', '.dfp-ps-prod-remove', function () {
+				var $panel = $( this ).closest( '.dfp-ps-acc-panel' );
+				$( this ).closest( '.dfp-ps-prod-row' ).remove();
+				updatePanelCount( $panel );
+				serialize();
+			} );
+
+			// ── Price override change ──
+			$wrap.on( 'input change', '.dfp-ps-prod-price', function () { serialize(); } );
+		},
+
+		// ── WooCommerce Product field ─────────────────────────────────────────
+
+		initWCProductFields: function ( $ctx ) {
+			$ctx = $ctx || $( document );
+			var self = this;
+			$ctx.find( '.dfp-wc-product-wrap' ).each( function () {
+				self.bindWCProductField( $( this ) );
+			} );
+		},
+
+		bindWCProductField: function ( $wrap ) {
+			var multiple  = parseInt( $wrap.data( 'multiple' ), 10 ) === 1;
+			var fieldName = $wrap.data( 'field-name' );
+
+			// Search/filter source list.
+			$wrap.find( '.dfp-wcp-search' ).on( 'input', function () {
+				var q = $( this ).val().toLowerCase();
+				$wrap.find( '.dfp-wcp-item' ).each( function () {
+					var title = String( $( this ).data( 'title' ) || '' );
+					$( this ).toggle( title.indexOf( q ) !== -1 );
+				} );
+			} );
+
+			// Click source item to select.
+			$wrap.on( 'click', '.dfp-wcp-source .dfp-wcp-item', function () {
+				var $item = $( this );
+				if ( $item.hasClass( 'dfp-wcp-selected' ) ) { return; }
+
+				var id    = $item.data( 'id' );
+				var title = $item.find( '.dfp-wcp-info strong' ).text();
+				var thumb = $item.find( '.dfp-wcp-thumb' ).html();
+
+				if ( ! multiple ) {
+					// Clear previous selection.
+					$wrap.find( '.dfp-wcp-id' ).remove();
+					$wrap.find( '.dfp-wcp-source .dfp-wcp-item' ).removeClass( 'dfp-wcp-selected' );
+					$wrap.find( '.dfp-wcp-target' ).empty();
+				}
+
+				// Remove empty placeholder.
+				$wrap.find( '.dfp-wcp-empty' ).remove();
+
+				// Add hidden input.
+				$wrap.prepend(
+					'<input type="hidden" name="' + fieldName + '[]" value="' + id + '" class="dfp-wcp-id">'
+				);
+
+				// Mark source item as selected.
+				$item.addClass( 'dfp-wcp-selected' );
+
+				// Build target item.
+				var $li = $( '<li class="dfp-relationship-item dfp-wcp-target-item"></li>' ).data( 'id', id );
+				$li.append( '<span class="dfp-wcp-thumb">' + thumb + '</span>' );
+				$li.append(
+					'<span class="dfp-wcp-info"><strong>' +
+					$( '<span>' ).text( title ).html() +
+					'</strong></span>'
+				);
+				$li.append(
+					'<button type="button" class="dfp-wcp-remove dfp-rel-remove" title="Remove">&times;</button>'
+				);
+				$wrap.find( '.dfp-wcp-target' ).append( $li );
+			} );
+
+			// Click remove button in target.
+			$wrap.on( 'click', '.dfp-wcp-remove', function () {
+				var $li = $( this ).closest( '.dfp-wcp-target-item' );
+				var id  = $li.data( 'id' );
+
+				// Remove corresponding hidden input.
+				$wrap.find( '.dfp-wcp-id[value="' + id + '"]' ).remove();
+
+				// Re-add empty placeholder if nothing left.
+				if ( ! $wrap.find( '.dfp-wcp-id' ).length ) {
+					$wrap.prepend(
+						'<input type="hidden" name="' + fieldName + '[]" value="" class="dfp-wcp-id dfp-wcp-empty">'
+					);
+				}
+
+				// Unmark source item.
+				$wrap.find( '.dfp-wcp-source .dfp-wcp-item[data-id="' + id + '"]' )
+					.removeClass( 'dfp-wcp-selected' );
+
+				$li.remove();
+			} );
+		},
+
+		// ── WooCommerce Category field ────────────────────────────────────────
+
+		initWCCategoryFields: function ( $ctx ) {
+			$ctx = $ctx || $( document );
+			var self = this;
+			$ctx.find( '.dfp-wc-category-wrap' ).each( function () {
+				self.bindWCCategoryField( $( this ) );
+			} );
+		},
+
+		bindWCCategoryField: function ( $wrap ) {
+			$wrap.find( '.dfp-wcc-search' ).on( 'input', function () {
+				var q = $( this ).val().toLowerCase();
+				$wrap.find( '.dfp-wcc-item' ).each( function () {
+					var name = String( $( this ).data( 'name' ) || '' );
+					$( this ).toggle( name.indexOf( q ) !== -1 );
+				} );
 			} );
 		},
 

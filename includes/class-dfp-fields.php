@@ -1892,6 +1892,614 @@ class DFP_Field_File extends DFP_Field_Base {
 }
 
 // ════════════════════════════════════════════════════════════════
+// WooCommerce: Product Picker
+// ════════════════════════════════════════════════════════════════
+
+class DFP_Field_WC_Product extends DFP_Field_Base {
+
+	public function get_type()  { return 'wc_product'; }
+	public function get_label() { return __( 'WC Product', 'dynamic-fields-pro' ); }
+
+	public function get_defaults() {
+		return array(
+			'multiple'      => 1,
+			'return_format' => 'object',
+			'status'        => 'publish',
+		);
+	}
+
+	public function render_field_settings( $field ) {
+		$multiple      = isset( $field['multiple'] )      ? (int) $field['multiple']      : 1;
+		$return_format = isset( $field['return_format'] ) ? $field['return_format']        : 'object';
+		$status        = isset( $field['status'] )        ? $field['status']               : 'publish';
+		?>
+		<tr class="dfp-field-setting">
+			<td class="dfp-label"><label><?php esc_html_e( 'Multiple', 'dynamic-fields-pro' ); ?></label></td>
+			<td>
+				<label><input type="checkbox" name="multiple" value="1" <?php checked( $multiple, 1 ); ?> /> <?php esc_html_e( 'Allow selecting multiple products', 'dynamic-fields-pro' ); ?></label>
+			</td>
+		</tr>
+		<tr class="dfp-field-setting">
+			<td class="dfp-label"><label><?php esc_html_e( 'Return Format', 'dynamic-fields-pro' ); ?></label></td>
+			<td>
+				<select name="return_format">
+					<option value="object" <?php selected( $return_format, 'object' ); ?>><?php esc_html_e( 'Product Object', 'dynamic-fields-pro' ); ?></option>
+					<option value="id"     <?php selected( $return_format, 'id' ); ?>><?php esc_html_e( 'Product ID', 'dynamic-fields-pro' ); ?></option>
+				</select>
+			</td>
+		</tr>
+		<tr class="dfp-field-setting">
+			<td class="dfp-label"><label><?php esc_html_e( 'Product Status', 'dynamic-fields-pro' ); ?></label></td>
+			<td>
+				<select name="status">
+					<option value="publish" <?php selected( $status, 'publish' ); ?>><?php esc_html_e( 'Published', 'dynamic-fields-pro' ); ?></option>
+					<option value="any"     <?php selected( $status, 'any' ); ?>><?php esc_html_e( 'Any', 'dynamic-fields-pro' ); ?></option>
+					<option value="draft"   <?php selected( $status, 'draft' ); ?>><?php esc_html_e( 'Draft', 'dynamic-fields-pro' ); ?></option>
+				</select>
+			</td>
+		</tr>
+		<?php
+	}
+
+	public function render_field( $field, $value ) {
+		$field_name    = esc_attr( $field['name'] );
+		$multiple      = ! empty( $field['multiple'] ) ? 1 : 0;
+		$status        = isset( $field['status'] ) ? sanitize_text_field( $field['status'] ) : 'publish';
+
+		if ( ! is_array( $value ) ) {
+			$value = $value ? array( $value ) : array();
+		}
+		$selected_ids = array_filter( array_map( 'absint', $value ) );
+
+		$args = array(
+			'post_type'      => 'product',
+			'post_status'    => $status === 'any' ? array( 'publish', 'draft', 'pending', 'private' ) : $status,
+			'posts_per_page' => 200,
+			'orderby'        => 'title',
+			'order'          => 'ASC',
+		);
+		$all_products = get_posts( $args );
+
+		echo '<div class="dfp-wc-product-wrap" data-field-name="' . esc_attr( $field['key'] ) . '" data-multiple="' . $multiple . '">';
+
+		// Hidden inputs for selected IDs.
+		if ( ! empty( $selected_ids ) ) {
+			foreach ( $selected_ids as $sid ) {
+				echo '<input type="hidden" name="' . esc_attr( $field['key'] ) . '[]" value="' . absint( $sid ) . '" class="dfp-wcp-id">';
+			}
+		} else {
+			echo '<input type="hidden" name="' . esc_attr( $field['key'] ) . '[]" value="" class="dfp-wcp-id dfp-wcp-empty">';
+		}
+
+		echo '<div class="dfp-relationship-cols">';
+
+		// Left: available products.
+		echo '<div class="dfp-relationship-available">';
+		echo '<input type="text" class="dfp-wcp-search widefat" placeholder="' . esc_attr__( 'Search products\xe2\x80\xa6', 'dynamic-fields-pro' ) . '">';
+		echo '<ul class="dfp-relationship-list dfp-wcp-source">';
+		foreach ( $all_products as $product_post ) {
+			$pid        = $product_post->ID;
+			$thumb_url  = get_the_post_thumbnail_url( $pid, array( 40, 40 ) );
+			$thumb_html = $thumb_url
+				? '<img src="' . esc_url( $thumb_url ) . '" width="40" height="40" style="object-fit:cover;border-radius:3px;">'
+				: '<span class="dfp-wcp-no-thumb">&#9643;</span>';
+
+			$price = '';
+			if ( function_exists( 'wc_get_product' ) ) {
+				$wc_product = wc_get_product( $pid );
+				if ( $wc_product ) {
+					$price = $wc_product->get_price_html();
+				}
+			}
+
+			$is_selected = in_array( $pid, $selected_ids, true );
+			$li_class    = 'dfp-relationship-item dfp-wcp-item' . ( $is_selected ? ' dfp-wcp-selected' : '' );
+
+			echo '<li class="' . esc_attr( $li_class ) . '" data-id="' . absint( $pid ) . '" data-title="' . esc_attr( strtolower( $product_post->post_title ) ) . '">';
+			echo '<span class="dfp-wcp-thumb">' . $thumb_html . '</span>';
+			echo '<span class="dfp-wcp-info"><strong>' . esc_html( $product_post->post_title ) . '</strong>';
+			if ( $price ) {
+				echo '<span class="dfp-wcp-price">' . wp_kses_post( $price ) . '</span>';
+			}
+			echo '</span>';
+			echo '</li>';
+		}
+		echo '</ul>';
+		echo '</div>'; // .dfp-relationship-available
+
+		// Right: selected products.
+		echo '<div class="dfp-relationship-selected">';
+		echo '<p class="dfp-rel-selected-label">' . esc_html__( 'Selected Products', 'dynamic-fields-pro' ) . '</p>';
+		echo '<ul class="dfp-relationship-list dfp-wcp-target">';
+		foreach ( $selected_ids as $sid ) {
+			$product_post = get_post( $sid );
+			if ( ! $product_post ) { continue; }
+			$thumb_url  = get_the_post_thumbnail_url( $sid, array( 40, 40 ) );
+			$thumb_html = $thumb_url
+				? '<img src="' . esc_url( $thumb_url ) . '" width="40" height="40" style="object-fit:cover;border-radius:3px;">'
+				: '<span class="dfp-wcp-no-thumb">&#9643;</span>';
+			echo '<li class="dfp-relationship-item dfp-wcp-target-item" data-id="' . absint( $sid ) . '">';
+			echo '<span class="dfp-wcp-thumb">' . $thumb_html . '</span>';
+			echo '<span class="dfp-wcp-info"><strong>' . esc_html( $product_post->post_title ) . '</strong></span>';
+			echo '<button type="button" class="dfp-wcp-remove dfp-rel-remove" title="' . esc_attr__( 'Remove', 'dynamic-fields-pro' ) . '">&times;</button>';
+			echo '</li>';
+		}
+		echo '</ul>';
+		echo '</div>'; // .dfp-relationship-selected
+
+		echo '</div>'; // .dfp-relationship-cols
+		echo '</div>'; // .dfp-wc-product-wrap
+	}
+
+	public function sanitize_value( $value, $field ) {
+		if ( ! is_array( $value ) ) {
+			$value = $value ? array( $value ) : array();
+		}
+		return array_values( array_filter( array_map( 'absint', $value ) ) );
+	}
+
+	public function load_value( $value, $post_id, $field ) {
+		if ( ! is_array( $value ) ) {
+			$value = $value ? array( $value ) : array();
+		}
+		$ids = array_filter( array_map( 'absint', $value ) );
+		if ( empty( $ids ) ) { return array(); }
+
+		$rf = isset( $field['return_format'] ) ? $field['return_format'] : 'object';
+		if ( $rf === 'id' ) { return array_values( $ids ); }
+
+		$out = array();
+		foreach ( $ids as $pid ) {
+			if ( function_exists( 'wc_get_product' ) ) {
+				$product = wc_get_product( $pid );
+				if ( $product ) { $out[] = $product; }
+			} else {
+				$post = get_post( $pid );
+				if ( $post ) { $out[] = $post; }
+			}
+		}
+		return $out;
+	}
+
+	public function update_value( $value, $post_id, $field ) {
+		$sanitized = $this->sanitize_value( $value, $field );
+		return update_post_meta( $post_id, $field['key'], $sanitized );
+	}
+
+	public function validate_value( $valid, $value, $field ) {
+		return parent::validate_value( $valid, $value, $field );
+	}
+}
+
+// ════════════════════════════════════════════════════════════════
+// WooCommerce: Product Category Picker
+// ════════════════════════════════════════════════════════════════
+
+class DFP_Field_WC_Category extends DFP_Field_Base {
+
+	public function get_type()  { return 'wc_category'; }
+	public function get_label() { return __( 'WC Category', 'dynamic-fields-pro' ); }
+
+	public function get_defaults() {
+		return array(
+			'multiple'      => 1,
+			'return_format' => 'object',
+		);
+	}
+
+	public function render_field_settings( $field ) {
+		$multiple      = isset( $field['multiple'] )      ? (int) $field['multiple']      : 1;
+		$return_format = isset( $field['return_format'] ) ? $field['return_format']        : 'object';
+		?>
+		<tr class="dfp-field-setting">
+			<td class="dfp-label"><label><?php esc_html_e( 'Multiple', 'dynamic-fields-pro' ); ?></label></td>
+			<td>
+				<label><input type="checkbox" name="multiple" value="1" <?php checked( $multiple, 1 ); ?> /> <?php esc_html_e( 'Allow selecting multiple categories', 'dynamic-fields-pro' ); ?></label>
+			</td>
+		</tr>
+		<tr class="dfp-field-setting">
+			<td class="dfp-label"><label><?php esc_html_e( 'Return Format', 'dynamic-fields-pro' ); ?></label></td>
+			<td>
+				<select name="return_format">
+					<option value="object" <?php selected( $return_format, 'object' ); ?>><?php esc_html_e( 'Term Object', 'dynamic-fields-pro' ); ?></option>
+					<option value="id"     <?php selected( $return_format, 'id' ); ?>><?php esc_html_e( 'Term ID', 'dynamic-fields-pro' ); ?></option>
+					<option value="slug"   <?php selected( $return_format, 'slug' ); ?>><?php esc_html_e( 'Term Slug', 'dynamic-fields-pro' ); ?></option>
+				</select>
+			</td>
+		</tr>
+		<?php
+	}
+
+	public function render_field( $field, $value ) {
+		$field_key = $field['key'];
+		$multiple  = ! empty( $field['multiple'] ) ? 1 : 0;
+
+		if ( ! is_array( $value ) ) {
+			$value = $value ? array( $value ) : array();
+		}
+		$selected_ids = array_filter( array_map( 'absint', $value ) );
+
+		$terms = get_terms( array(
+			'taxonomy'   => 'product_cat',
+			'hide_empty' => false,
+			'orderby'    => 'name',
+			'order'      => 'ASC',
+		) );
+
+		// Build hierarchical map: parent_id => children[].
+		$terms_by_parent = array();
+		if ( ! is_wp_error( $terms ) && is_array( $terms ) ) {
+			foreach ( $terms as $term ) {
+				$terms_by_parent[ $term->parent ][] = $term;
+			}
+		}
+
+		echo '<div class="dfp-wc-category-wrap" data-multiple="' . $multiple . '">';
+		echo '<input type="text" class="dfp-wcc-search widefat" placeholder="' . esc_attr__( 'Filter categories\xe2\x80\xa6', 'dynamic-fields-pro' ) . '">';
+		echo '<ul class="dfp-wcc-list">';
+		$this->render_term_list( $terms_by_parent, 0, $field_key, $selected_ids, $multiple );
+		echo '</ul>';
+		echo '</div>';
+	}
+
+	private function render_term_list( $terms_by_parent, $parent_id, $field_key, $selected_ids, $multiple, $depth = 0 ) {
+		if ( empty( $terms_by_parent[ $parent_id ] ) ) { return; }
+		foreach ( $terms_by_parent[ $parent_id ] as $term ) {
+			$checked    = in_array( $term->term_id, $selected_ids, true );
+			$pad        = str_repeat( '&#8212; ', $depth );
+			$input_type = $multiple ? 'checkbox' : 'radio';
+			echo '<li class="dfp-wcc-item" data-name="' . esc_attr( strtolower( $term->name ) ) . '" style="padding-left:' . ( $depth * 16 ) . 'px">';
+			echo '<label>';
+			echo '<input type="' . $input_type . '" name="' . esc_attr( $field_key ) . '[]" value="' . absint( $term->term_id ) . '"' . checked( $checked, true, false ) . '>';
+			echo ' ' . $pad . esc_html( $term->name );
+			echo ' <span class="dfp-wcc-count">(' . absint( $term->count ) . ')</span>';
+			echo '</label>';
+			echo '</li>';
+			$this->render_term_list( $terms_by_parent, $term->term_id, $field_key, $selected_ids, $multiple, $depth + 1 );
+		}
+	}
+
+	public function sanitize_value( $value, $field ) {
+		if ( ! is_array( $value ) ) {
+			$value = $value ? array( $value ) : array();
+		}
+		return array_values( array_filter( array_map( 'absint', $value ) ) );
+	}
+
+	public function load_value( $value, $post_id, $field ) {
+		if ( ! is_array( $value ) ) {
+			$value = $value ? array( $value ) : array();
+		}
+		$ids = array_filter( array_map( 'absint', $value ) );
+		if ( empty( $ids ) ) { return array(); }
+
+		$rf  = isset( $field['return_format'] ) ? $field['return_format'] : 'object';
+		$out = array();
+		foreach ( $ids as $tid ) {
+			$term = get_term( $tid, 'product_cat' );
+			if ( is_wp_error( $term ) || ! $term ) { continue; }
+			if ( $rf === 'id' )        { $out[] = $tid; }
+			elseif ( $rf === 'slug' )  { $out[] = $term->slug; }
+			else                       { $out[] = $term; }
+		}
+		return $out;
+	}
+
+	public function update_value( $value, $post_id, $field ) {
+		return $this->sanitize_value( $value, $field );
+	}
+
+	public function validate_value( $valid, $value, $field ) {
+		return parent::validate_value( $valid, $value, $field );
+	}
+}
+
+// ════════════════════════════════════════════════════════════════
+// WooCommerce: Product Showcase (category tabs + products)
+// ════════════════════════════════════════════════════════════════
+
+class DFP_Field_Product_Showcase extends DFP_Field_Base {
+
+	public function get_type()  { return 'product_showcase'; }
+	public function get_label() { return __( 'Product Showcase', 'dynamic-fields-pro' ); }
+
+	public function get_defaults() {
+		return array( 'return_format' => 'object' );
+	}
+
+	public function render_field_settings( $field ) {
+		$rf = isset( $field['return_format'] ) ? $field['return_format'] : 'object';
+		?>
+		<tr class="dfp-field-setting">
+			<td class="dfp-label"><label><?php esc_html_e( 'Return Format', 'dynamic-fields-pro' ); ?></label></td>
+			<td>
+				<select name="return_format">
+					<option value="object" <?php selected( $rf, 'object' ); ?>><?php esc_html_e( 'Objects (Term + Products)', 'dynamic-fields-pro' ); ?></option>
+					<option value="id"     <?php selected( $rf, 'id' ); ?>><?php esc_html_e( 'IDs only', 'dynamic-fields-pro' ); ?></option>
+				</select>
+			</td>
+		</tr>
+		<?php
+	}
+
+	// SVG icons for layout picker cards.
+	private function layout_icon( $type ) {
+		$icons = array(
+			'tabs'     => '<svg width="60" height="40" viewBox="0 0 60 40" xmlns="http://www.w3.org/2000/svg"><rect x="0" y="0" width="20" height="8" rx="2" fill="#6366f1"/><rect x="22" y="0" width="17" height="8" rx="2" fill="#dde1ea"/><rect x="41" y="0" width="19" height="8" rx="2" fill="#dde1ea"/><rect x="0" y="11" width="60" height="29" rx="2" fill="#dde1ea"/></svg>',
+			'slider'   => '<svg width="60" height="40" viewBox="0 0 60 40" xmlns="http://www.w3.org/2000/svg"><rect x="5" y="4" width="50" height="32" rx="2" fill="#dde1ea"/><polygon points="8,20 15,13 15,27" fill="#94a3b8"/><polygon points="52,20 45,13 45,27" fill="#94a3b8"/></svg>',
+			'grid'     => '<svg width="60" height="40" viewBox="0 0 60 40" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="2" width="26" height="16" rx="2" fill="#dde1ea"/><rect x="32" y="2" width="26" height="16" rx="2" fill="#dde1ea"/><rect x="2" y="22" width="26" height="16" rx="2" fill="#dde1ea"/><rect x="32" y="22" width="26" height="16" rx="2" fill="#dde1ea"/></svg>',
+			'carousel' => '<svg width="60" height="40" viewBox="0 0 60 40" xmlns="http://www.w3.org/2000/svg"><rect x="10" y="4" width="40" height="28" rx="2" fill="#dde1ea"/><rect x="2" y="8" width="6" height="20" rx="1" fill="#c8cdd8"/><rect x="52" y="8" width="6" height="20" rx="1" fill="#c8cdd8"/><circle cx="22" cy="37" r="2" fill="#6366f1"/><circle cx="30" cy="37" r="2" fill="#c8cdd8"/><circle cx="38" cy="37" r="2" fill="#c8cdd8"/></svg>',
+		);
+		return isset( $icons[ $type ] ) ? $icons[ $type ] : '';
+	}
+
+	public function render_field( $field, $value ) {
+		// Always read raw stored meta so admin JS gets {cat_id, products:[{id,price}]}.
+		// load_value() transforms that into WP_Term/WC_Product objects which wp_json_encode
+		// cannot serialise to the expected shape, causing JS to read undefined for every ID.
+		global $post;
+		if ( $post && $post->ID ) {
+			$raw = get_post_meta( $post->ID, $field['key'], true );
+			if ( is_array( $raw ) && isset( $raw['categories'] ) ) {
+				$value = $raw;
+			}
+		}
+
+		if ( is_string( $value ) ) {
+			$decoded = json_decode( stripslashes( $value ), true );
+			$value   = is_array( $decoded ) ? $decoded : array();
+		}
+		if ( ! is_array( $value ) ) { $value = array(); }
+
+		$section_title     = isset( $value['section_title'] )     ? $value['section_title']     : '';
+		$section_subtitle  = isset( $value['section_subtitle'] )  ? $value['section_subtitle']  : '';
+		$layout_style      = isset( $value['layout_style'] )      ? $value['layout_style']      : 'tabs';
+		$tab_style         = isset( $value['tab_style'] )         ? $value['tab_style']         : 'horizontal';
+		$products_per_page = isset( $value['products_per_page'] ) ? absint( $value['products_per_page'] ) : 4;
+		$categories        = isset( $value['categories'] )        ? $value['categories']        : array();
+
+		$terms = get_terms( array( 'taxonomy' => 'product_cat', 'hide_empty' => false, 'orderby' => 'name', 'order' => 'ASC' ) );
+		$terms_list = array();
+		if ( ! is_wp_error( $terms ) && is_array( $terms ) ) {
+			foreach ( $terms as $term ) {
+				$terms_list[] = array( 'id' => $term->term_id, 'name' => $term->name );
+			}
+		}
+
+		$value_json = wp_json_encode( $value );
+		$terms_json = wp_json_encode( $terms_list );
+		?>
+		<div class="dfp-ps-wrap"
+			data-field-key="<?php echo esc_attr( $field['key'] ); ?>"
+			data-nonce="<?php echo esc_attr( wp_create_nonce( 'dfp_admin' ) ); ?>"
+			data-ajax-url="<?php echo esc_attr( admin_url( 'admin-ajax.php' ) ); ?>">
+
+			<input type="hidden" name="<?php echo esc_attr( $field['key'] ); ?>" class="dfp-showcase-value" value="<?php echo esc_attr( $value_json ); ?>">
+			<script type="application/json" class="dfp-showcase-categories"><?php echo $terms_json; // phpcs:ignore ?></script>
+
+			<?php /* ── Settings box ── */ ?>
+			<div class="dfp-ps-settings-box">
+				<div class="dfp-ps-box-hdr">
+					<strong><?php esc_html_e( 'Product Section Settings', 'dynamic-fields-pro' ); ?></strong>
+				</div>
+				<table class="dfp-ps-table">
+					<tbody>
+
+						<tr>
+							<th><?php esc_html_e( 'Section Title', 'dynamic-fields-pro' ); ?></th>
+							<td>
+								<input type="text" class="regular-text dfp-ps-section-title"
+									value="<?php echo esc_attr( $section_title ); ?>"
+									placeholder="<?php esc_attr_e( 'e.g. Our Product Solutions', 'dynamic-fields-pro' ); ?>">
+								<p class="description"><?php esc_html_e( 'Main heading shown on the frontend section.', 'dynamic-fields-pro' ); ?></p>
+							</td>
+						</tr>
+
+						<tr>
+							<th><?php esc_html_e( 'Section Subtitle', 'dynamic-fields-pro' ); ?></th>
+							<td>
+								<textarea class="large-text dfp-ps-section-subtitle" rows="2"
+									placeholder="<?php esc_attr_e( 'e.g. Explore our wide range of products', 'dynamic-fields-pro' ); ?>"><?php echo esc_textarea( $section_subtitle ); ?></textarea>
+								<p class="description"><?php esc_html_e( 'Shown below the section title.', 'dynamic-fields-pro' ); ?></p>
+							</td>
+						</tr>
+
+						<tr>
+							<th><?php esc_html_e( 'Layout Style', 'dynamic-fields-pro' ); ?></th>
+							<td>
+								<div class="dfp-ps-layout-picker">
+									<?php foreach ( array( 'tabs' => 'Tabs', 'slider' => 'Slider', 'grid' => 'Grid', 'carousel' => 'Carousel' ) as $slug => $lbl ) :
+										$cls = $layout_style === $slug ? 'dfp-ps-layout-card dfp-ps-layout-active' : 'dfp-ps-layout-card';
+									?>
+									<div class="<?php echo esc_attr( $cls ); ?>" data-layout="<?php echo esc_attr( $slug ); ?>">
+										<?php echo $this->layout_icon( $slug ); // phpcs:ignore ?>
+										<span class="dfp-ps-lbl"><?php echo esc_html( $lbl ); ?></span>
+									</div>
+									<?php endforeach; ?>
+								</div>
+							</td>
+						</tr>
+
+						<tr>
+							<th><?php esc_html_e( 'Category Display', 'dynamic-fields-pro' ); ?></th>
+							<td>
+								<?php foreach ( array( 'horizontal' => 'Horizontal Tabs', 'vertical' => 'Vertical Tabs', 'dropdown' => 'Dropdown' ) as $slug => $lbl ) : ?>
+								<label class="dfp-ps-radio-lbl">
+									<input type="radio" class="dfp-ps-tab-style"
+										name="_dfp_ps_ts_<?php echo esc_attr( $field['key'] ); ?>"
+										value="<?php echo esc_attr( $slug ); ?>"
+										<?php checked( $tab_style, $slug ); ?>>
+									<?php echo esc_html( $lbl ); ?>
+								</label>
+								<?php endforeach; ?>
+							</td>
+						</tr>
+
+						<tr>
+							<th><?php esc_html_e( 'Products Per Page', 'dynamic-fields-pro' ); ?></th>
+							<td>
+								<input type="number" class="small-text dfp-ps-ppp" min="1" max="100"
+									value="<?php echo absint( $products_per_page ); ?>">
+								<p class="description"><?php esc_html_e( 'Number of products shown per category tab.', 'dynamic-fields-pro' ); ?></p>
+							</td>
+						</tr>
+
+						<tr>
+							<th><?php esc_html_e( 'Visible Categories', 'dynamic-fields-pro' ); ?></th>
+							<td>
+								<div class="dfp-ps-tagbox">
+									<div class="dfp-ps-tags-list">
+										<?php foreach ( $categories as $cat ) :
+											$cat_id   = absint( $cat['cat_id'] ?? 0 );
+											$term     = $cat_id ? get_term( $cat_id, 'product_cat' ) : null;
+											$cat_name = ( $term && ! is_wp_error( $term ) ) ? $term->name : '';
+											if ( ! $cat_name ) { continue; }
+										?>
+										<span class="dfp-ps-tag" data-cat-id="<?php echo $cat_id; ?>">
+											<?php echo esc_html( $cat_name ); ?>
+											<button type="button" class="dfp-ps-tag-x" title="Remove">&times;</button>
+										</span>
+										<?php endforeach; ?>
+									</div>
+									<input type="text" class="dfp-ps-cat-search"
+										placeholder="<?php esc_attr_e( 'Search and add a category&#8230;', 'dynamic-fields-pro' ); ?>"
+										autocomplete="off">
+									<div class="dfp-ps-cat-dropdown" style="display:none;">
+										<ul class="dfp-ps-cat-options"></ul>
+									</div>
+								</div>
+								<p class="description"><?php esc_html_e( 'Select categories to display in this section.', 'dynamic-fields-pro' ); ?></p>
+							</td>
+						</tr>
+
+					</tbody>
+				</table>
+			</div>
+
+			<?php /* ── Products in Categories box ── */ ?>
+			<div class="dfp-ps-products-box">
+				<div class="dfp-ps-products-hdr">
+					<strong><?php esc_html_e( 'Products in Categories', 'dynamic-fields-pro' ); ?></strong>
+					<div class="dfp-ps-hdr-btns">
+						<button type="button" class="button dfp-ps-expand-all"><?php esc_html_e( 'Expand All', 'dynamic-fields-pro' ); ?></button>
+						<button type="button" class="button button-primary dfp-ps-add-cat-btn">&#43; <?php esc_html_e( 'Add Category', 'dynamic-fields-pro' ); ?></button>
+					</div>
+				</div>
+				<div class="dfp-ps-accordion"></div>
+			</div>
+
+		</div><?php /* .dfp-ps-wrap */ ?>
+		<?php
+	}
+
+	public function sanitize_value( $value, $field ) {
+		if ( is_string( $value ) ) {
+			$decoded = json_decode( stripslashes( $value ), true );
+			$value   = is_array( $decoded ) ? $decoded : array();
+		}
+		if ( ! is_array( $value ) ) { return array(); }
+
+		$valid_layouts   = array( 'tabs', 'slider', 'grid', 'carousel' );
+		$valid_tabstyles = array( 'horizontal', 'vertical', 'dropdown' );
+
+		return array(
+			'section_title'     => sanitize_text_field( $value['section_title']    ?? '' ),
+			'section_subtitle'  => sanitize_textarea_field( $value['section_subtitle'] ?? '' ),
+			'layout_style'      => in_array( $value['layout_style']  ?? '', $valid_layouts,   true ) ? $value['layout_style']  : 'tabs',
+			'tab_style'         => in_array( $value['tab_style']     ?? '', $valid_tabstyles, true ) ? $value['tab_style']     : 'horizontal',
+			'products_per_page' => max( 1, absint( $value['products_per_page'] ?? 4 ) ),
+			'categories'        => $this->sanitize_categories( $value['categories'] ?? array() ),
+		);
+	}
+
+	private function sanitize_categories( $cats ) {
+		if ( ! is_array( $cats ) ) { return array(); }
+		$out = array();
+		foreach ( $cats as $cat ) {
+			if ( ! is_array( $cat ) ) { continue; }
+			$cat_id   = absint( $cat['cat_id'] ?? 0 );
+			$products = array();
+			foreach ( (array) ( $cat['products'] ?? array() ) as $p ) {
+				if ( ! is_array( $p ) ) { continue; }
+				$pid = absint( $p['id'] ?? 0 );
+				if ( ! $pid ) { continue; }
+				$products[] = array( 'id' => $pid, 'price' => sanitize_text_field( $p['price'] ?? '' ) );
+			}
+			if ( $cat_id ) {
+				$out[] = array( 'cat_id' => $cat_id, 'products' => $products );
+			}
+		}
+		return $out;
+	}
+
+	public function load_value( $value, $post_id, $field ) {
+		if ( is_string( $value ) ) {
+			$decoded = json_decode( $value, true );
+			$value   = is_array( $decoded ) ? $decoded : array();
+		}
+		if ( ! is_array( $value ) ) { return array(); }
+
+		$rf = isset( $field['return_format'] ) ? $field['return_format'] : 'object';
+
+		$out = array(
+			'section_title'     => $value['section_title']     ?? '',
+			'section_subtitle'  => $value['section_subtitle']  ?? '',
+			'layout_style'      => $value['layout_style']      ?? 'tabs',
+			'tab_style'         => $value['tab_style']         ?? 'horizontal',
+			'products_per_page' => absint( $value['products_per_page'] ?? 4 ),
+			'categories'        => array(),
+		);
+
+		foreach ( (array) ( $value['categories'] ?? array() ) as $cat_data ) {
+			$cat_id      = absint( $cat_data['cat_id'] ?? 0 );
+			$product_arr = (array) ( $cat_data['products'] ?? array() );
+			if ( ! $cat_id ) { continue; }
+
+			if ( $rf === 'id' ) {
+				$out['categories'][] = array(
+					'cat_id'   => $cat_id,
+					'products' => array_values( array_filter( array_map( function( $p ) { return absint( $p['id'] ?? 0 ); }, $product_arr ) ) ),
+				);
+				continue;
+			}
+
+			$term = get_term( $cat_id, 'product_cat' );
+			if ( is_wp_error( $term ) || ! $term ) { continue; }
+
+			$products = array();
+			foreach ( $product_arr as $pdata ) {
+				$pid = absint( $pdata['id'] ?? 0 );
+				if ( ! $pid ) { continue; }
+				if ( function_exists( 'wc_get_product' ) ) {
+					$product = wc_get_product( $pid );
+					if ( $product ) {
+						$products[] = array( 'product' => $product, 'price_override' => $pdata['price'] ?? '' );
+					}
+				} else {
+					$post = get_post( $pid );
+					if ( $post ) {
+						$products[] = array( 'product' => $post, 'price_override' => $pdata['price'] ?? '' );
+					}
+				}
+			}
+
+			$out['categories'][] = array( 'category' => $term, 'products' => $products );
+		}
+
+		return $out;
+	}
+
+	public function update_value( $value, $post_id, $field ) {
+		$sanitized = $this->sanitize_value( $value, $field );
+		return update_post_meta( $post_id, $field['key'], $sanitized );
+	}
+
+	public function validate_value( $valid, $value, $field ) {
+		return parent::validate_value( $valid, $value, $field );
+	}
+}
+
+// ════════════════════════════════════════════════════════════════
 // Container / Registry
 // ════════════════════════════════════════════════════════════════
 
@@ -1923,6 +2531,9 @@ class DFP_Fields {
 			new DFP_Field_Gallery(),
 			new DFP_Field_File(),
 			new DFP_Field_Repeater(),
+			new DFP_Field_WC_Product(),
+			new DFP_Field_WC_Category(),
+			new DFP_Field_Product_Showcase(),
 		);
 		foreach ( $instances as $instance ) {
 			self::$types[ $instance->get_type() ] = $instance;
@@ -1971,7 +2582,8 @@ class DFP_Fields {
 			__( 'Choice', 'dynamic-fields-pro' )     => array( 'select' => __( 'Select', 'dynamic-fields-pro' ), 'checkbox' => __( 'Checkbox', 'dynamic-fields-pro' ), 'radio' => __( 'Radio', 'dynamic-fields-pro' ), 'true_false' => __( 'True / False', 'dynamic-fields-pro' ) ),
 			__( 'Relational', 'dynamic-fields-pro' ) => array( 'post_object' => __( 'Post Object', 'dynamic-fields-pro' ), 'relationship' => __( 'Relationship', 'dynamic-fields-pro' ), 'taxonomy' => __( 'Taxonomy', 'dynamic-fields-pro' ), 'user' => __( 'User', 'dynamic-fields-pro' ) ),
 			__( 'jQuery', 'dynamic-fields-pro' )     => array( 'date_picker' => __( 'Date Picker', 'dynamic-fields-pro' ), 'color_picker' => __( 'Color Picker', 'dynamic-fields-pro' ) ),
-			__( 'Layout', 'dynamic-fields-pro' )     => array( 'repeater' => __( 'Repeater', 'dynamic-fields-pro' ) ),
+			__( 'Layout', 'dynamic-fields-pro' )      => array( 'repeater' => __( 'Repeater', 'dynamic-fields-pro' ) ),
+			__( 'WooCommerce', 'dynamic-fields-pro' ) => array( 'wc_product' => __( 'WC Product', 'dynamic-fields-pro' ), 'wc_category' => __( 'WC Category', 'dynamic-fields-pro' ), 'product_showcase' => __( 'Product Showcase', 'dynamic-fields-pro' ) ),
 		);
 	}
 }
@@ -2024,6 +2636,20 @@ function _dfp_sanitize_sub_field( $value, array $field, DFP_Field_Base $type_obj
 				return array_values( array_filter( array_map( 'absint', $value ) ) );
 			}
 			return array();
+
+		case 'wc_product':
+		case 'wc_category':
+			if ( is_array( $value ) ) {
+				return array_values( array_filter( array_map( 'absint', $value ) ) );
+			}
+			return $value ? array( absint( $value ) ) : array();
+
+		case 'product_showcase':
+			if ( is_string( $value ) ) {
+				$decoded = json_decode( stripslashes( $value ), true );
+				$value   = is_array( $decoded ) ? $decoded : array();
+			}
+			return is_array( $value ) ? $value : array();
 
 		case 'checkbox':
 		case 'relationship':

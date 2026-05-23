@@ -1,6 +1,6 @@
 # Dynamic Fields Pro — Complete Developer Documentation
 
-Version: 1.0.0 | Requires: WordPress 5.8+, PHP 7.4+
+Version: 1.0.3 | Requires: WordPress 5.8+, PHP 7.4+
 
 ---
 
@@ -998,15 +998,15 @@ REST POST /wp-json/dfp/v1/fields/{post_id}
 
 ---
 
-*Dynamic Fields Pro v1.0.0 — Built as a complete ACF alternative for WordPress.*
+*Dynamic Fields Pro v1.0.3 — Built as a complete ACF alternative for WordPress.*
 
 
 === Dynamic Fields Pro ===
 Contributors: dynamicfieldspro
-Tags: custom fields, meta box, field groups, ACF alternative, repeater, gallery, wysiwyg, faq
+Tags: custom fields, meta box, field groups, ACF alternative, repeater, gallery, wysiwyg, faq, woocommerce
 Requires at least: 5.8
 Tested up to: 6.7
-Stable tag: 1.0.0
+Stable tag: 1.0.3
 Requires PHP: 7.4
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
@@ -1714,6 +1714,27 @@ Use wp_kses_post() or the_field() — never esc_html() as that would break HTML 
 
 == Changelog ==
 
+= 1.0.3 =
+* Product Showcase field: rebuilt admin UI using WordPress form-table layout for reliable rendering
+* Product Showcase: fixed layout picker cards (compact 90px cards with SVG icons in a row)
+* Product Showcase: fixed placeholder text encoding issue in category search input
+* Product Showcase: accordion with per-category product tables, inline price override, product picker overlay
+* Bumped asset version to force CSS/JS cache refresh
+
+= 1.0.2 =
+* Added WC Product field type (dual-pane picker, multiple/single selection)
+* Added WC Category field type (hierarchical checklist with search filter)
+* Added Product Showcase field type (category tabs + product selection)
+* Added Page Template location rule using get_page_templates() for Elementor/Divi support
+* Fixed input name attributes to use field key (save mechanism compatibility)
+* Fixed update_value() in WC fields to call update_post_meta()
+
+= 1.0.1 =
+* Added Color Picker field with alpha channel support
+* Added Date Picker field with configurable return formats
+* Added True/False toggle UI
+* Added Relationship field with dual-pane search
+
 = 1.0.0 =
 * Initial release
 * 22 field types: Text, Textarea, Number, Email, URL, Password, Select, Checkbox, Radio, True/False, Post Object, Relationship, Taxonomy, User, Date Picker, Color Picker, Image, Gallery, File, WYSIWYG Editor, Repeater
@@ -1722,12 +1743,11 @@ Use wp_kses_post() or the_field() — never esc_html() as that would break HTML 
 * REST API (GET + POST /wp-json/dfp/v1/fields/{post_id})
 * Import / Export field groups as JSON
 * ACF-compatible template-tag API
-* Gallery field with wp.media multi-select, thumbnail grid, min/max limits
-* File field with allowed mime types, size display, return format options
-* WYSIWYG field with full TinyMCE, tabs/toolbar settings, safe clone fallback
-* Nested repeater support
 
 == Upgrade Notice ==
+
+= 1.0.3 =
+Fixes Product Showcase admin UI rendering. Recommended update for all users using the Product Showcase field.
 
 = 1.0.0 =
 Initial release.

@@ -31,6 +31,12 @@ class DFP_REST {
 
 		// AJAX: render a single field row HTML (used by the JS field builder).
 		add_action( 'wp_ajax_dfp_render_field_row', array( $this, 'ajax_render_field_row' ) );
+
+		// AJAX: WooCommerce product search.
+		add_action( 'wp_ajax_dfp_wc_search_products',         array( $this, 'ajax_wc_search_products' ) );
+
+		// AJAX: WooCommerce products by category (for Product Showcase).
+		add_action( 'wp_ajax_dfp_wc_products_by_category',    array( $this, 'ajax_wc_products_by_category' ) );
 	}
 
 	// ── REST API ─────────────────────────────────────────────────────────────
@@ -384,6 +390,100 @@ class DFP_REST {
 				'redirect_url'=> admin_url( 'admin.php?page=dfp-field-groups' ),
 			)
 		);
+	}
+
+	// ── AJAX: dfp_wc_search_products ─────────────────────────────────────────
+
+	public function ajax_wc_search_products() {
+		check_ajax_referer( 'dfp_admin', 'nonce' );
+
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_send_json_error( array( 'message' => __( 'Unauthorized.', 'dynamic-fields-pro' ) ), 403 );
+		}
+
+		$search = isset( $_GET['search'] ) ? sanitize_text_field( wp_unslash( $_GET['search'] ) ) : '';
+		$status = isset( $_GET['status'] ) ? sanitize_key( $_GET['status'] )                       : 'publish';
+
+		$args = array(
+			'post_type'      => 'product',
+			'post_status'    => $status === 'any' ? array( 'publish', 'draft', 'pending', 'private' ) : $status,
+			'posts_per_page' => 50,
+			'orderby'        => 'title',
+			'order'          => 'ASC',
+		);
+		if ( $search ) {
+			$args['s'] = $search;
+		}
+
+		$products = get_posts( $args );
+		$data     = array();
+		foreach ( $products as $p ) {
+			$price = '';
+			if ( function_exists( 'wc_get_product' ) ) {
+				$wc_product = wc_get_product( $p->ID );
+				if ( $wc_product ) {
+					$price = wp_strip_all_tags( $wc_product->get_price_html() );
+				}
+			}
+			$data[] = array(
+				'id'    => $p->ID,
+				'title' => $p->post_title,
+				'thumb' => get_the_post_thumbnail_url( $p->ID, array( 40, 40 ) ) ?: '',
+				'price' => $price,
+			);
+		}
+
+		wp_send_json_success( $data );
+	}
+
+	// ── AJAX: dfp_wc_products_by_category ────────────────────────────────────
+
+	public function ajax_wc_products_by_category() {
+		check_ajax_referer( 'dfp_admin', 'nonce' );
+
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_send_json_error( array( 'message' => __( 'Unauthorized.', 'dynamic-fields-pro' ) ), 403 );
+		}
+
+		$cat_id = isset( $_GET['cat_id'] ) ? absint( $_GET['cat_id'] ) : 0;
+		if ( ! $cat_id ) {
+			wp_send_json_error( array( 'message' => __( 'No category ID.', 'dynamic-fields-pro' ) ) );
+		}
+
+		$args = array(
+			'post_type'      => 'product',
+			'post_status'    => 'publish',
+			'posts_per_page' => 100,
+			'orderby'        => 'title',
+			'order'          => 'ASC',
+			'tax_query'      => array(
+				array(
+					'taxonomy' => 'product_cat',
+					'field'    => 'term_id',
+					'terms'    => $cat_id,
+				),
+			),
+		);
+
+		$products = get_posts( $args );
+		$data     = array();
+		foreach ( $products as $p ) {
+			$price = '';
+			if ( function_exists( 'wc_get_product' ) ) {
+				$wc_product = wc_get_product( $p->ID );
+				if ( $wc_product ) {
+					$price = wp_strip_all_tags( $wc_product->get_price_html() );
+				}
+			}
+			$data[] = array(
+				'id'    => $p->ID,
+				'title' => $p->post_title,
+				'thumb' => get_the_post_thumbnail_url( $p->ID, array( 60, 60 ) ) ?: '',
+				'price' => $price,
+			);
+		}
+
+		wp_send_json_success( $data );
 	}
 
 	// ── AJAX: dfp_render_field_row ────────────────────────────────────────────

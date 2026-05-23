@@ -197,6 +197,7 @@ class DFP_Location {
 				break;
 
 			case 'post_template':
+			case 'page_template':
 				$template = get_page_template_slug( $post->ID );
 				if ( empty( $template ) ) {
 					$template = 'default';
@@ -307,9 +308,12 @@ class DFP_Location {
 				break;
 
 			case 'post_template':
+			case 'page_template':
 				$values[] = array( 'value' => 'default', 'label' => __( 'Default Template', 'dynamic-fields-pro' ) );
-				$templates = wp_get_theme()->get_page_templates();
-				foreach ( $templates as $file => $name ) {
+				// get_page_templates() merges theme + plugin-registered templates (e.g. Elementor, Divi).
+				$templates = get_page_templates();
+				arsort( $templates );
+				foreach ( $templates as $name => $file ) {
 					$values[] = array( 'value' => $file, 'label' => $name );
 				}
 				break;
@@ -384,7 +388,7 @@ class DFP_Location {
 			array(
 				array( 'value' => 'post_type',        'label' => __( 'Post Type',        'dynamic-fields-pro' ) ),
 				array( 'value' => 'post_status',      'label' => __( 'Post Status',      'dynamic-fields-pro' ) ),
-				array( 'value' => 'post_template',    'label' => __( 'Post Template',    'dynamic-fields-pro' ) ),
+				array( 'value' => 'page_template',    'label' => __( 'Page Template',    'dynamic-fields-pro' ) ),
 				array( 'value' => 'page_type',        'label' => __( 'Page Type',        'dynamic-fields-pro' ) ),
 				array( 'value' => 'page_parent',      'label' => __( 'Page Parent',      'dynamic-fields-pro' ) ),
 				array( 'value' => 'post_format',      'label' => __( 'Post Format',      'dynamic-fields-pro' ) ),

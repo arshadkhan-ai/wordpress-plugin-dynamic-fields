@@ -394,7 +394,7 @@ class DFP_Data {
 				// phpcs:ignore WordPress.Security.NonceVerification.Missing
 				$raw_value = isset( $_POST[ $key ] ) ? wp_unslash( $_POST[ $key ] ) : null;
 
-				if ( $raw_value === null && ! in_array( $field['type'], array( 'checkbox', 'relationship', 'taxonomy', 'repeater' ), true ) ) {
+				if ( $raw_value === null && ! in_array( $field['type'], array( 'checkbox', 'relationship', 'taxonomy', 'repeater', 'wc_category', 'wc_product' ), true ) ) {
 					// For non-multi fields not present in POST (e.g. unchecked true_false).
 					$raw_value = '';
 				}

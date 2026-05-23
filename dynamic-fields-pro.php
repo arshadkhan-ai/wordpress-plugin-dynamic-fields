@@ -3,7 +3,7 @@
  * Plugin Name:       Dynamic Fields Pro
  * Plugin URI:        https://example.com/dynamic-fields-pro
  * Description:       A complete custom fields solution for WordPress — create field groups, assign them with location rules, and access field data programmatically. A full ACF Pro alternative.
- * Version:           1.0.1
+ * Version:           1.0.3
  * Author:            Dynamic Fields Pro
  * Author URI:        https://example.com
  * Text Domain:       dynamic-fields-pro
@@ -18,7 +18,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'DFP_VERSION',  '1.0.1' );
+define( 'DFP_VERSION',  '1.0.3' );
 define( 'DFP_PATH',     plugin_dir_path( __FILE__ ) );
 define( 'DFP_URL',      plugin_dir_url( __FILE__ ) );
 define( 'DFP_BASENAME', plugin_basename( __FILE__ ) );
